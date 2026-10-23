@@ -4,8 +4,6 @@ A browser demo of an AI receptionist for a fictional clinic, Sunrise Family Clin
 
 This is not a telephone product. A connected session is a WebRTC conversation in the browser. The clinic, doctors, address, and hours are demonstration data.
 
-The repository also still contains an earlier static law-firm site (`index.html`, `team.html`, and the nested `law-firm-website/` copies). Those files are not part of this Next.js app and are not deleted by it.
-
 ## 1. Prerequisites
 
 - Node.js 20 or newer (Node.js 22 is a comfortable choice)
