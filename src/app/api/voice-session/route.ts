@@ -65,7 +65,10 @@ export async function POST(request: Request) {
         transcript: null,
         failureReason: failure,
       });
-      if (error instanceof VoiceSessionError) return jsonError(502, "voice_unavailable", error.message);
+      if (error instanceof VoiceSessionError) {
+        const status = error.code === "voice_unauthorized" ? 503 : 502;
+        return jsonError(status, error.code, error.message);
+      }
       throw error;
     }
   } catch (error) {

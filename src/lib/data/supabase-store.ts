@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_CLINIC } from "@/lib/clinic/default-clinic";
+import { HttpError } from "@/lib/http";
 import { hashToken, tokenMatches } from "@/lib/auth/tokens";
 import type {
   AppointmentRequest,
@@ -471,10 +472,17 @@ function mapSettings(row: SettingsRow): ClinicSettings {
   };
 }
 
-function databaseError(error: { code?: string; message?: string }): Error {
+function databaseError(error: { code?: string; message?: string }): HttpError {
   console.error("Database error", error.code ?? "unknown");
   if (error.code === "42P01" || error.code === "PGRST205") {
-    return new Error("The database is not ready. Apply the Supabase migration, then try again.");
+    return new HttpError(
+      503,
+      "database_not_ready",
+      "The database is not ready. Apply the Supabase migration, then try again.",
+    );
   }
-  return new Error("The database could not complete that request.");
+  if (error.message === "Invalid API key" || error.code === "PGRST301") {
+    return new HttpError(503, "database_unauthorized", "The database rejected the server credentials.");
+  }
+  return new HttpError(503, "database_error", "The database could not complete that request.");
 }

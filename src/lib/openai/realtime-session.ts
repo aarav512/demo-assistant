@@ -3,7 +3,10 @@ import { REALTIME_TOOLS, realtimeModel } from "@/lib/openai/tools";
 import type { ClinicSettings } from "@/types/domain";
 
 export class VoiceSessionError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly code: "voice_not_configured" | "voice_unauthorized" | "voice_unavailable" = "voice_unavailable",
+  ) {
     super(message);
   }
 }
@@ -12,13 +15,14 @@ export function buildSessionConfig(clinic: ClinicSettings) {
   return {
     type: "realtime",
     model: realtimeModel(),
+    output_modalities: ["audio"],
     instructions: buildReceptionistInstructions(clinic),
     tool_choice: "auto",
     tools: REALTIME_TOOLS,
     audio: {
       input: {
         transcription: { model: "gpt-4o-mini-transcribe" },
-        turn_detection: { type: "server_vad" },
+        turn_detection: { type: "server_vad", create_response: true, interrupt_response: true },
         noise_reduction: { type: "near_field" },
       },
       output: { voice: "marin" },
@@ -38,7 +42,7 @@ export async function createRealtimeAnswer(options: {
 }): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
-    throw new VoiceSessionError("Voice service not configured.");
+    throw new VoiceSessionError("Voice service not configured.", "voice_not_configured");
   }
   const form = new FormData();
   form.set("sdp", options.sdp);
@@ -55,7 +59,10 @@ export async function createRealtimeAnswer(options: {
   const body = await response.text();
   if (!response.ok || !body.startsWith("v=")) {
     console.error("Realtime session was rejected", response.status);
-    throw new VoiceSessionError("The voice service could not start a session.");
+    if (response.status === 401 || response.status === 403) {
+      throw new VoiceSessionError("The voice service rejected the server credentials.", "voice_unauthorized");
+    }
+    throw new VoiceSessionError("The voice service could not start a session.", "voice_unavailable");
   }
   return body;
 }

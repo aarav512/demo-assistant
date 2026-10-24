@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { appointmentRequestSchema, clinicSettingsSchema } from "@/lib/validation/schemas";
+import { clinicSettingsSchema, createAppointmentRequestSchema } from "@/lib/validation/schemas";
 import { isTodayOrFuture } from "@/lib/utils/dates";
 
 const now = new Date("2026-10-22T12:00:00.000Z");
 
 function request(overrides: Record<string, unknown> = {}) {
-  return appointmentRequestSchema.safeParse({
+  return createAppointmentRequestSchema(now).safeParse({
     callerName: "Asha Menon",
     callerPhone: "9876543210",
     requestedService: "General consultation",

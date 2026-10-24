@@ -59,9 +59,31 @@ describe("voice service failures", () => {
     expect(init.headers).toMatchObject({ Authorization: "Bearer sk-test-secret" });
     const session = JSON.parse(String((init.body as FormData).get("session")));
     expect(session.model).toBe("gpt-realtime-2.1");
+    expect(session.output_modalities).toEqual(["audio"]);
+    expect(session.audio.input.turn_detection.create_response).toBe(true);
     expect(session.tools.map((tool: { name: string }) => tool.name)).toContain("create_appointment_request");
     expect(JSON.stringify(session)).not.toContain("sk-test-secret");
     expect(buildSessionConfig(DEFAULT_CLINIC).audio.output.voice).toBe("marin");
+  });
+
+  it("tells the caller when the voice credentials are rejected", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-test-secret");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: { message: "Incorrect API key provided: sk-test-secret" } }), { status: 401 })),
+    );
+    const response = await startVoice(
+      new Request("http://localhost:3000/api/voice-session", {
+        method: "POST",
+        headers: { origin: "http://localhost:3000", host: "localhost:3000", "content-type": "application/json" },
+        body: JSON.stringify({ sdp: "v=0\r\noffer", consent: true, storeTranscript: false }),
+      }),
+    );
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { error: string; code: string };
+    expect(body.code).toBe("voice_unauthorized");
+    expect(body.error).toBe("The voice service rejected the server credentials.");
+    expect(body.error).not.toContain("sk-test-secret");
   });
 });
 

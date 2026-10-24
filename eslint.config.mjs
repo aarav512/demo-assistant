@@ -6,6 +6,9 @@ const eslintConfig = [
     ignores: [
       "**/node_modules/**",
       "**/.next/**",
+      "**/.open-next/**",
+      "**/.tmp-worker-bundle/**",
+      "**/pages-output/**",
       "**/dist/**",
       "ca-firm-demo/**",
     ],

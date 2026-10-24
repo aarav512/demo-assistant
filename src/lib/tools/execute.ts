@@ -3,6 +3,7 @@ import { normalizePhone } from "@/lib/utils/phone";
 import {
   appointmentRequestSchema,
   clinicInfoSchema,
+  createAppointmentRequestSchema,
   enquirySchema,
   followUpSchema,
   slotsSchema,
@@ -70,7 +71,7 @@ async function runTool(options: {
     if (!options.call.callerConsent) {
       return { error: "Contact details cannot be saved because consent was not given." };
     }
-    const parsed = appointmentRequestSchema.safeParse({
+    const parsed = (options.now ? createAppointmentRequestSchema(options.now) : appointmentRequestSchema).safeParse({
       ...args,
       detailsConfirmed: args.detailsConfirmed === true,
     });

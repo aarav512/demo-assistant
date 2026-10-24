@@ -16,35 +16,39 @@ const phoneSchema = z
   })
   .transform((value) => normalizePhone(value) ?? value);
 
-export const appointmentRequestSchema = z
-  .object({
-    callerName: z.string().trim().min(2, "A caller name is required.").max(80),
-    callerPhone: phoneSchema,
-    requestedService: z.string().trim().max(80).optional().nullable(),
-    requestedDoctor: z.string().trim().max(80).optional().nullable(),
-    preferredDate: z.string().trim(),
-    preferredTime: z.string().trim().min(1, "A preferred time is required.").max(40),
-    notes: z.string().trim().max(400).optional().nullable(),
-    detailsConfirmed: z.boolean().refine((value) => value === true, {
-      message: "The caller must confirm the details before they are saved.",
-    }),
-  })
-  .superRefine((value, ctx) => {
-    if (!value.requestedService && !value.requestedDoctor) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["requestedService"],
-        message: "A service or a doctor is required.",
-      });
-    }
-    if (!isTodayOrFuture(value.preferredDate)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["preferredDate"],
-        message: "The preferred date must be today or a future date.",
-      });
-    }
-  });
+export function createAppointmentRequestSchema(now?: Date) {
+  return z
+    .object({
+      callerName: z.string().trim().min(2, "A caller name is required.").max(80),
+      callerPhone: phoneSchema,
+      requestedService: z.string().trim().max(80).optional().nullable(),
+      requestedDoctor: z.string().trim().max(80).optional().nullable(),
+      preferredDate: z.string().trim(),
+      preferredTime: z.string().trim().min(1, "A preferred time is required.").max(40),
+      notes: z.string().trim().max(400).optional().nullable(),
+      detailsConfirmed: z.boolean().refine((value) => value === true, {
+        message: "The caller must confirm the details before they are saved.",
+      }),
+    })
+    .superRefine((value, ctx) => {
+      if (!value.requestedService && !value.requestedDoctor) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["requestedService"],
+          message: "A service or a doctor is required.",
+        });
+      }
+      if (!isTodayOrFuture(value.preferredDate, now)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["preferredDate"],
+          message: "The preferred date must be today or a future date.",
+        });
+      }
+    });
+}
+
+export const appointmentRequestSchema = createAppointmentRequestSchema();
 
 export const appointmentStatusSchema = z.object({
   status: z.enum(appointmentStatuses),

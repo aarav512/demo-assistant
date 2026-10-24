@@ -45,7 +45,7 @@ Fill in `.env.local`. Every variable below is **server-only**. Do not prefix any
 | `SUPABASE_URL` | Durable storage | Project URL |
 | `SUPABASE_ANON_KEY` | Safety check | Public key. This app does not send it to the browser. `SUPABASE_PUBLISHABLE_KEY` is also accepted |
 | `SUPABASE_SERVICE_ROLE_KEY` | Durable storage | Service or secret key. `SUPABASE_SECRET_KEY` is also accepted |
-| `APP_BASE_URL` | Origin check | For example `http://localhost:3000` |
+| `APP_BASE_URL` | Origin check | `http://localhost:3000` locally. Production is `https://demo-assistant.tenjikuweb013.workers.dev` |
 | `DEMO_ADMIN_PASSWORD` | Reviewing records | Password you type in the Demo admin dialog |
 | `SESSION_SECRET` | Admin cookie | A long random string, not the password |
 
@@ -148,23 +148,28 @@ Past dates are rejected. The receptionist is not given a list of open slots, bec
 - **Too many demo sessions.** The voice endpoint allows 8 starts per 10 minutes per IP. Wait and try again.
 - **Sign-in was not accepted.** The password does not match `DEMO_ADMIN_PASSWORD`.
 
-## 15. Deploy to Vercel
+## 15. Deploy on Cloudflare Workers
 
-1. Push the project to a Git host Vercel can read.
-2. Import the repository in Vercel. Framework preset: Next.js. Root directory: this folder.
-3. Add the environment variables from section 4. Use the production URL for `APP_BASE_URL`, for example `https://your-app.vercel.app`, with no trailing slash.
-4. Deploy.
-5. Open the deployment over HTTPS and allow the microphone.
+Production origin: `https://demo-assistant.tenjikuweb013.workers.dev`
 
-`npm run build` is the production build Vercel runs.
+This Worker runs the OpenNext bundle described in `wrangler.jsonc`. Do not publish that bundle as a Pages `_worker.js`, and do not create another Cloudflare project. `npm run build` checks the Next.js build. It does not publish the Worker.
 
-In-memory records are not shared across serverless instances. Configure Supabase before a client meeting on Vercel.
+Preview and production keep separate version variables. Set every server variable on the version you are testing, then set the same names again for production. `APP_BASE_URL` in production must be `https://demo-assistant.tenjikuweb013.workers.dev` with no trailing slash. `SUPABASE_URL` must be only `https://PROJECT_REF.supabase.co`. Do not put secrets in `wrangler.jsonc` or in a `NEXT_PUBLIC_` name.
+
+1. Build the Worker bundle: `npm run cf:build`.
+2. Upload a preview version without changing production: `npx wrangler versions upload --message "Preview clinic receptionist"`.
+3. Open the preview URL printed by that command. It looks like `https://<version>-demo-assistant.tenjikuweb013.workers.dev`. Test `/`, `/api/health`, and `/calls`.
+4. Promote that version to production only after the preview checks pass: `npx wrangler versions deploy`.
+5. `npm run cf:deploy` builds and deploys straight to production. Use it only when you intend to replace `https://demo-assistant.tenjikuweb013.workers.dev`.
+6. `npm run cf:preview` builds and serves the Worker locally. It does not publish a remote preview.
+
+Apply the Supabase migration before a client demo. Worker instances do not share the in-memory store.
 
 ## 16. Production environment variables
 
-Set the same server-only variables as in section 4 in the Vercel project settings. Do not mark the OpenAI key, service key, admin password, or session secret as exposed to the browser.
+Set the same server-only variables as in section 4 on the `demo-assistant` Worker. Preview versions do not automatically receive production secrets. Do not mark the OpenAI key, service key, admin password, or session secret as exposed to the browser.
 
-`APP_BASE_URL` must be the public origin. Microphone access also requires the Permissions-Policy header already set by `next.config.ts` (`microphone=(self)`).
+`APP_BASE_URL` must be `https://demo-assistant.tenjikuweb013.workers.dev`. Microphone access also requires the Permissions-Policy header already set by `next.config.ts` (`microphone=(self)`).
 
 ## 17. Security checklist before a demo
 

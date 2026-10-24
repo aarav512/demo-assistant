@@ -1,4 +1,14 @@
 import { releaseVoiceSession } from "@/lib/openai/cleanup";
+import {
+  assistantDelta,
+  assistantFinalText,
+  audioResponseCommand,
+  callerTranscript,
+  greetingCommand,
+  responseFailure,
+  sessionUpdateCommand,
+  textTurnCommands,
+} from "@/lib/openai/realtime-events";
 import { safeClientMessage } from "@/lib/openai/session-state";
 import type { AppointmentRequest, CallSummary, DemoCall, TranscriptLine, VoiceStatus } from "@/types/domain";
 
@@ -34,6 +44,8 @@ export class BrowserVoiceSession {
   private chain: Promise<void> = Promise.resolve();
   private starting = false;
   private closing = false;
+  private greeted = false;
+  private greetingTimer = 0;
   private status: VoiceStatus = "ready";
 
   constructor(
@@ -49,35 +61,50 @@ export class BrowserVoiceSession {
     }
     this.starting = true;
     this.closing = false;
+    this.greeted = false;
     this.storeTranscript = options.storeTranscript;
     this.items = [];
     this.handled.clear();
     this.emitTranscript();
     this.setStatus("connecting");
+    this.audio.autoplay = true;
+    void this.audio.play().catch(() => undefined);
 
+    let pendingMicrophone: Promise<MediaStream> | null = null;
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        this.fail("This browser cannot use the microphone.");
+        return;
+      }
+      pendingMicrophone = navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+      });
       const healthResponse = await fetch("/api/health", { cache: "no-store" });
       const health = (await healthResponse.json()) as { voice?: string };
       if (health.voice !== "configured") {
+        this.stopStream(await pendingMicrophone.catch(() => null));
         this.fail("Voice service not configured.");
         return;
       }
 
-      this.microphone = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
-      });
+      this.microphone = await pendingMicrophone;
+      pendingMicrophone = null;
+      const liveTracks = this.microphone.getAudioTracks().filter((track) => track.readyState === "live");
+      if (liveTracks.length === 0) throw new Error("The microphone did not start.");
       this.startMeter();
 
       const peer = new RTCPeerConnection();
       this.peer = peer;
       peer.addEventListener("track", (event) => {
         const [stream] = event.streams;
-        if (!stream) return;
-        this.audio.srcObject = stream;
+        this.audio.srcObject = stream && stream.getAudioTracks().length > 0 ? stream : new MediaStream([event.track]);
         void this.audio.play().catch(() => this.listener({ type: "needs-gesture" }));
       });
       peer.addEventListener("connectionstatechange", () => {
         if (peer.connectionState === "failed") this.fail("The voice connection failed.");
+      });
+      peer.addEventListener("iceconnectionstatechange", () => {
+        if (peer.iceConnectionState === "failed") this.fail("The voice connection could not reach the receptionist.");
       });
       for (const track of this.microphone.getAudioTracks()) peer.addTrack(track, this.microphone);
 
@@ -89,15 +116,8 @@ export class BrowserVoiceSession {
       });
       channel.addEventListener("open", () => {
         this.setStatus("listening");
-        channel.send(
-          JSON.stringify({
-            type: "response.create",
-            response: {
-              instructions:
-                "Greet the caller now with the configured opening. Keep it to one or two short sentences and ask at most one question.",
-            },
-          }),
-        );
+        this.sendCommand(sessionUpdateCommand());
+        this.greetingTimer = window.setTimeout(() => this.greet(), 1200);
       });
       channel.addEventListener("close", () => {
         if (!this.closing) void this.finish("abandoned", "The voice connection closed.");
@@ -113,6 +133,7 @@ export class BrowserVoiceSession {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sdp, consent: true, storeTranscript: options.storeTranscript }),
+        signal: AbortSignal.timeout(25_000),
       });
       const payload = (await response.json()) as { sdp?: string; callId?: string; callToken?: string; error?: string };
       if (!response.ok || !payload.sdp || !payload.callId || !payload.callToken) {
@@ -122,13 +143,20 @@ export class BrowserVoiceSession {
       this.callToken = payload.callToken;
       await peer.setRemoteDescription({ type: "answer", sdp: payload.sdp });
     } catch (error) {
+      if (pendingMicrophone) this.stopStream(await pendingMicrophone.catch(() => null));
       const denied = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError");
+      const missingMic = error instanceof DOMException && (error.name === "NotFoundError" || error.name === "NotReadableError");
+      const timedOut = error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError");
       const id = this.callId;
       const token = this.callToken;
       this.fail(
         denied
           ? "Microphone access was denied. Allow the microphone in your browser, then start the demo again."
-          : safeClientMessage(error instanceof Error ? error.message : "The voice connection failed."),
+          : missingMic
+            ? "No microphone is available. Connect a microphone, then start the demo again."
+            : timedOut
+              ? "The voice service took too long to answer. Start the demo again."
+              : safeClientMessage(error instanceof Error ? error.message : "The voice connection failed."),
       );
       if (id && token) {
         void fetch(`/api/calls/${id}`, {
@@ -155,14 +183,9 @@ export class BrowserVoiceSession {
       this.listener({ type: "error", message: "Start the demo before sending a line." });
       return;
     }
-    this.channel.send(
-      JSON.stringify({
-        type: "conversation.item.create",
-        item: { type: "message", role: "user", content: [{ type: "input_text", text: line }] },
-      }),
-    );
-    this.channel.send(JSON.stringify({ type: "response.create" }));
+    for (const command of textTurnCommands(line)) this.sendCommand(command);
     this.addLine("caller", line);
+    this.setStatus("processing");
   }
 
   async end(): Promise<void> {
@@ -238,23 +261,20 @@ export class BrowserVoiceSession {
       return;
     }
     const type = String(event.type ?? "");
+    if (type === "session.created") this.sendCommand(sessionUpdateCommand());
+    if (type === "session.updated") this.greet();
     if (type === "input_audio_buffer.speech_started") this.setStatus("listening");
     if (type === "input_audio_buffer.speech_stopped") this.setStatus("processing");
     if (type === "response.created" || type === "output_audio_buffer.started") this.setStatus("speaking");
-    if (type === "output_audio_buffer.stopped" || type === "response.done") {
-      if (type !== "response.done") this.setStatus("listening");
-    }
-    if (type === "conversation.item.input_audio_transcription.completed") {
-      const text = String(event.transcript ?? "").trim();
-      if (text) this.addLine("caller", text);
-    }
-    if (type === "response.output_audio_transcript.delta") {
-      this.appendAssistant(String(event.delta ?? ""), String(event.item_id ?? "assistant"));
-    }
-    if (type === "response.output_audio_transcript.done") {
-      const text = String(event.transcript ?? "").trim();
-      if (text) this.finishAssistant(text, String(event.item_id ?? ""));
-    }
+    if (type === "output_audio_buffer.stopped") this.setStatus("listening");
+    const spoken = callerTranscript(event);
+    if (spoken) this.addLine("caller", spoken);
+    const delta = assistantDelta(event);
+    if (delta) this.appendAssistant(delta.text, delta.itemId);
+    const finalText = assistantFinalText(event);
+    if (finalText) this.finishAssistant(finalText.text, finalText.itemId);
+    const failure = responseFailure(event);
+    if (failure) this.listener({ type: "error", message: safeClientMessage(failure) });
     if (type === "response.done") {
       this.chain = this.chain
         .then(() => this.handleFunctionCalls(event))
@@ -307,7 +327,24 @@ export class BrowserVoiceSession {
         }),
       );
     }
-    this.channel?.send(JSON.stringify({ type: "response.create" }));
+    this.sendCommand(audioResponseCommand());
+  }
+
+  private greet(): void {
+    if (this.greeted || this.closing || this.channel?.readyState !== "open") return;
+    this.greeted = true;
+    if (this.greetingTimer) window.clearTimeout(this.greetingTimer);
+    this.greetingTimer = 0;
+    this.sendCommand(greetingCommand());
+  }
+
+  private sendCommand(command: Record<string, unknown>): void {
+    if (this.channel?.readyState !== "open") return;
+    this.channel.send(JSON.stringify(command));
+  }
+
+  private stopStream(stream: MediaStream | null): void {
+    stream?.getTracks().forEach((track) => track.stop());
   }
 
   private startMeter(): void {
@@ -328,6 +365,7 @@ export class BrowserVoiceSession {
       this.frame = window.requestAnimationFrame(tick);
     };
     this.meter = context;
+    void context.resume().catch(() => undefined);
     this.frame = window.requestAnimationFrame(tick);
   }
 
@@ -370,12 +408,16 @@ export class BrowserVoiceSession {
   }
 
   private fail(message: string): void {
+    if (this.closing) return;
+    this.closing = true;
     this.release();
     this.setStatus("disconnected");
     this.listener({ type: "error", message });
   }
 
   private release(): void {
+    if (this.greetingTimer) window.clearTimeout(this.greetingTimer);
+    this.greetingTimer = 0;
     if (this.frame) window.cancelAnimationFrame(this.frame);
     const meter = this.meter;
     releaseVoiceSession({

@@ -1,9 +1,14 @@
 node_modules/
 .next/
+.open-next/
+.tmp-worker-bundle/
+.wrangler/
+pages-output/
 out/
 .env
 .env.*
 !.env.example
+.dev.vars
 *.log
 tsconfig.tsbuildinfo
 .vercel
