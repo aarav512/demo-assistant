@@ -4,9 +4,9 @@ export default function SettingsPage() {
   return (
     <div className="stack">
       <header>
-        <p className="page-kicker">Configuration</p>
-        <h1>Clinic settings</h1>
-        <p className="lede">Edit the fictional clinic the receptionist is allowed to describe.</p>
+        <p className="page-kicker">Clinic</p>
+        <h1>What the desk can say.</h1>
+        <p className="lede">These details are fictional. They are the only clinic facts the receptionist is allowed to use.</p>
       </header>
       <SettingsForm />
     </div>

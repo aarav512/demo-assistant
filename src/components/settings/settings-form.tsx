@@ -15,7 +15,7 @@ export function SettingsForm() {
       .then((body: { settings?: ClinicSettings }) => setSettings(body.settings ?? null));
   }, []);
 
-  if (!settings) return <p>Loading clinic settings…</p>;
+  if (!settings) return <p role="status">Loading clinic settings.</p>;
 
   function update<K extends keyof ClinicSettings>(key: K, value: ClinicSettings[K]) {
     setSettings((current) => (current ? { ...current, [key]: value } : current));
@@ -41,8 +41,8 @@ export function SettingsForm() {
       }}
     >
       <p className="banner">
-        <strong>Demonstration clinic. </strong>
-        These details are fictional and are what the receptionist is allowed to say. They do not describe a real business.
+        <strong>Fictional clinic. </strong>
+        Change what the receptionist is allowed to say. This is not a real business.
       </p>
       <label className="field">
         Clinic name
@@ -55,7 +55,7 @@ export function SettingsForm() {
       <fieldset className="stack" disabled={!admin.admin}>
         <legend>Opening hours</legend>
         {settings.openingHours.map((row, index) => (
-          <div key={index} className="filters">
+          <div key={index} className="filters hours">
             <input
               aria-label={`Hours label ${index + 1}`}
               value={row.label}
@@ -88,7 +88,7 @@ export function SettingsForm() {
       <fieldset className="stack" disabled={!admin.admin}>
         <legend>Doctors</legend>
         {settings.doctors.map((doctor, index) => (
-          <div key={index} className="filters">
+          <div key={index} className="filters doctors">
             <input
               aria-label={`Doctor ${index + 1}`}
               value={doctor.name}
@@ -162,7 +162,11 @@ export function SettingsForm() {
           onChange={(event) => update("retentionDays", Number(event.target.value))}
         />
       </label>
-      {message ? <p role="status">{message}</p> : null}
+      {message ? (
+        <p className={message.includes("could not") ? "alert" : undefined} role={message.includes("could not") ? "alert" : "status"}>
+          {message}
+        </p>
+      ) : null}
       <div className="actions">
         <button className="button primary" type="submit" disabled={!admin.admin}>
           Save clinic settings
@@ -181,7 +185,7 @@ export function SettingsForm() {
           Add labelled sample records
         </button>
       </div>
-      {!admin.admin ? <p className="meta">Sign in as the demo administrator to edit these settings.</p> : null}
+      {!admin.admin ? <p className="meta">Sign in as admin to edit these settings.</p> : null}
     </form>
   );
 }

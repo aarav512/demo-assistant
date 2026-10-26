@@ -3,8 +3,8 @@ import { Shell } from "@/components/layout/shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Clinic Receptionist · Kynex Code",
-  description: "Interactive browser demo of an AI receptionist for a fictional clinic.",
+  title: "Kynex Code · AI Calling Assistant",
+  description: "Try Sunrise Family Clinic’s voice assistant in the browser. Appointment requests are not confirmed bookings.",
   robots: { index: false, follow: false },
 };
 

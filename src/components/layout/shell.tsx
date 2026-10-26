@@ -7,9 +7,9 @@ import { BrandMark } from "@/components/brand/brand-mark";
 import { AdminProvider, useAdmin } from "@/components/layout/admin-context";
 
 const LINKS = [
-  { href: "/", label: "Demo" },
+  { href: "/", label: "Call" },
   { href: "/calls", label: "Calls" },
-  { href: "/appointments", label: "Appointments" },
+  { href: "/appointments", label: "Requests" },
   { href: "/settings", label: "Clinic" },
   { href: "/privacy", label: "Privacy" },
 ];
@@ -33,7 +33,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <main id="content" className="main">
           {children}
         </main>
-        <footer className="footer">AI Receptionist Demo · Built by Kynex Code</footer>
+        <footer className="footer">Kynex Code · Sunrise Family Clinic is a demonstration.</footer>
       </div>
     </AdminProvider>
   );
@@ -66,7 +66,7 @@ function AdminControl() {
   return (
     <>
       <button className="button secondary" type="button" onClick={() => setOpen(true)}>
-        Demo admin
+        Admin
       </button>
       {open ? (
         <dialog open aria-labelledby="admin-title">
@@ -84,10 +84,10 @@ function AdminControl() {
               });
             }}
           >
-            <h2 id="admin-title">Demo admin</h2>
+            <h2 id="admin-title">Admin</h2>
             <p className="meta">
               {admin.configured
-                ? "Sign in to review caller details, confirm requests, and edit the fictional clinic."
+                ? "Sign in to read caller details, update requests, and edit the fictional clinic."
                 : "Set DEMO_ADMIN_PASSWORD and SESSION_SECRET on the server before sign-in will work."}
             </p>
             <label className="field">
@@ -99,7 +99,11 @@ function AdminControl() {
                 onChange={(event) => setPassword(event.target.value)}
               />
             </label>
-            {error ? <p role="alert">{error}</p> : null}
+            {error ? (
+              <p className="alert" role="alert">
+                {error}
+              </p>
+            ) : null}
             <div className="actions">
               <button className="button primary" type="submit" disabled={!admin.configured}>
                 Sign in

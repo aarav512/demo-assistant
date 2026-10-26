@@ -21,7 +21,7 @@ export const STATUS_LABEL = {
   connecting: "Connecting",
   listening: "Listening",
   speaking: "Speaking",
-  processing: "Thinking",
+  processing: "Processing",
   disconnected: "Disconnected",
 } as const;
 

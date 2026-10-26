@@ -48,27 +48,31 @@ export function CallPanel({ clinicName, onFinished }: { clinicName: string; onFi
     return () => session.destroy();
   }, []);
 
-  const bars = Array.from({ length: 24 }, (_, index) => {
-    const distance = Math.abs(index - 11.5) / 12;
+  const bars = Array.from({ length: 28 }, (_, index) => {
+    const distance = Math.abs(index - 13.5) / 14;
     const height = active ? Math.max(0.14, level * (1 - distance * 0.55) + 0.08) : 0.12;
     return height;
   });
+  const tone = status === "speaking" ? "speaking" : active ? "live" : "";
 
   return (
-    <section className="panel" aria-labelledby="call-title">
+    <section className="stage" id="call-demo" aria-labelledby="call-title">
       <div className="panel-head">
         <div>
-          <p className="page-kicker">Interactive demo</p>
-          <h2 id="call-title">{clinicName}</h2>
-          <p className="meta">Browser conversation. This is not a telephone call.</p>
+          <p className="page-kicker">{clinicName}</p>
+          <h2
+            id="call-title"
+            className={`stage-state status ${active ? "live" : status === "disconnected" && error ? "bad" : ""}`}
+            role="status"
+          >
+            <i />
+            {STATUS_LABEL[status]}
+          </h2>
+          <p className="meta">A browser conversation, not a phone call.</p>
         </div>
-        <p className={`status ${active ? "live" : status === "disconnected" && error ? "bad" : ""}`} role="status">
-          <i />
-          {STATUS_LABEL[status]}
-        </p>
       </div>
 
-      <div className="waveform" aria-hidden="true">
+      <div className={`waveform ${tone}`} aria-hidden="true">
         {bars.map((height, index) => (
           <span key={index} style={{ transform: `scaleY(${height})` }} />
         ))}
@@ -78,8 +82,8 @@ export function CallPanel({ clinicName, onFinished }: { clinicName: string; onFi
       <div className="transcript" aria-live="polite" aria-relevant="additions">
         {items.length === 0 ? (
           <div className="empty-state">
-            <h3>The transcript will appear here</h3>
-            <p>Microphone access is requested only after you start. You can speak English or Hinglish.</p>
+            <h3>Nothing said yet</h3>
+            <p>The microphone is requested only after you start. English and Hinglish both work.</p>
           </div>
         ) : (
           items.map((item) => (
@@ -91,10 +95,14 @@ export function CallPanel({ clinicName, onFinished }: { clinicName: string; onFi
         )}
       </div>
 
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? (
+        <p className="alert" role="alert">
+          {error}
+        </p>
+      ) : null}
       {needsGesture ? (
         <button className="button secondary" type="button" onClick={() => void audioRef.current?.play().then(() => setNeedsGesture(false))}>
-          Tap to hear the receptionist
+          Play the reply
         </button>
       ) : null}
 
@@ -103,13 +111,13 @@ export function CallPanel({ clinicName, onFinished }: { clinicName: string; onFi
           <label>
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
             <span>
-              I understand I am speaking with an AI receptionist in a browser demo, not placing a phone call. I agree that this
-              demo may save the summary and any name or phone number I choose to share. Audio is not recorded.
+              I know this is an AI receptionist in a browser demo, not a phone call. The demo may save a summary and any name
+              or phone number I share. Audio is not recorded.
             </span>
           </label>
           <label>
             <input type="checkbox" checked={storeTranscript} onChange={(event) => setStoreTranscript(event.target.checked)} />
-            <span>Also save the written transcript of this demo.</span>
+            <span>Save the written transcript of this demo.</span>
           </label>
         </div>
       ) : null}
@@ -117,7 +125,7 @@ export function CallPanel({ clinicName, onFinished }: { clinicName: string; onFi
       <div className="actions">
         {!active ? (
           <button
-            className="button primary"
+            className="button primary call-start"
             type="button"
             disabled={!consent}
             onClick={() => {
@@ -128,13 +136,13 @@ export function CallPanel({ clinicName, onFinished }: { clinicName: string; onFi
             }}
           >
             <Phone size={18} aria-hidden="true" />
-            {status === "disconnected" ? "Start another demo" : "Start Demo"}
+            {status === "disconnected" ? "Call again" : "Start the call"}
           </button>
         ) : (
           <>
             <button className="button danger" type="button" onClick={() => void sessionRef.current?.end()}>
               <PhoneOff size={18} aria-hidden="true" />
-              End conversation
+              End call
             </button>
             <button
               className="button secondary"
@@ -152,9 +160,10 @@ export function CallPanel({ clinicName, onFinished }: { clinicName: string; onFi
           </>
         )}
       </div>
+      {!active ? <p className="meta">Your browser asks for the microphone when the call starts.</p> : null}
 
-      <div className="stack" style={{ marginTop: "1rem" }}>
-        <h3>Try these questions</h3>
+      <div className="stack">
+        <h3>Try asking</h3>
         <div className="prompts">
           {SUGGESTED_PROMPTS.map((prompt) => (
             <button
@@ -178,7 +187,7 @@ export function CallPanel({ clinicName, onFinished }: { clinicName: string; onFi
           }}
         >
           <label className="field" style={{ flex: "1 1 16rem" }}>
-            Send a typed line through the live session
+            Type a line
             <input value={typed} onChange={(event) => setTyped(event.target.value)} disabled={!active} />
           </label>
           <button className="button secondary" type="submit" disabled={!active || !typed.trim()}>
@@ -188,8 +197,8 @@ export function CallPanel({ clinicName, onFinished }: { clinicName: string; onFi
       </div>
 
       {summary ? (
-        <div className="detail" style={{ marginTop: "1rem" }}>
-          <h3>Call summary</h3>
+        <div className="detail">
+          <h3>Summary</h3>
           <p>{summary.narrative}</p>
           <p>Follow-up: {summary.followUpAction}</p>
           {appointments.map((appointment) => (

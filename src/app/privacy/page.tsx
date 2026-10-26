@@ -1,13 +1,12 @@
 export default function PrivacyPage() {
   return (
-    <article className="stack">
+    <article className="stack prose">
       <header>
         <p className="page-kicker">Privacy</p>
-        <h1>Privacy notice</h1>
+        <h1>What this demo keeps.</h1>
       </header>
       <p>
-        This is a sales demonstration of an AI receptionist. You are speaking with software in your browser. It is not a telephone
-        call, and it is not a consultation with a clinician.
+        You are speaking with software in your browser. It is not a telephone call, and it is not a consultation with a clinician.
       </p>
       <p>
         Sunrise Family Clinic, its doctors, address, and opening hours are fictional. Do not share a real medical history, identity
@@ -23,7 +22,7 @@ export default function PrivacyPage() {
       <p>Audio is not recorded or stored. The demo does not send SMS, WhatsApp, or email messages.</p>
       <p>
         Saved demo records are deleted by an administrator, or automatically after the retention period set in clinic settings.
-        Contact details are not included in public pages. Reviewing them requires the demo admin password.
+        Contact details are not included on public pages. Reviewing them requires the demo admin password.
       </p>
       <p>
         This notice is not a legal certification. Before using the product with a real clinic, review the applicable Indian privacy

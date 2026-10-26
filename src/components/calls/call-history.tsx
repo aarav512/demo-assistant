@@ -14,6 +14,7 @@ export function CallHistory() {
   const [sort, setSort] = useState("newest");
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!admin.admin) return;
@@ -21,6 +22,7 @@ export function CallHistory() {
       const body = (await response.json()) as { calls?: DemoCall[]; error?: string };
       if (!response.ok) setError(body.error ?? "Calls could not be loaded.");
       else setCalls(body.calls ?? []);
+      setLoaded(true);
     });
   }, [admin.admin]);
 
@@ -45,12 +47,12 @@ export function CallHistory() {
   return (
     <div className="stack">
       <header>
-        <p className="page-kicker">Call history</p>
-        <h1>Demo calls</h1>
-        <p className="lede">These are browser demonstrations. They are not records of telephone calls or real patients.</p>
+        <p className="page-kicker">Calls</p>
+        <h1>What was said.</h1>
+        <p className="lede">Browser demonstrations only. These are not telephone records or patient charts.</p>
       </header>
       {!admin.admin ? (
-        <p className="banner">Sign in as the demo administrator to review call history. Contact details stay off the public page.</p>
+        <p className="banner">Sign in as admin to read call history. Contact details stay off the public page.</p>
       ) : (
         <>
           <div className="filters">
@@ -78,10 +80,16 @@ export function CallHistory() {
               </select>
             </label>
           </div>
-          {error ? <p role="alert">{error}</p> : null}
-          {visible.length === 0 ? (
+          {error ? (
+            <p className="alert" role="alert">
+              {error}
+            </p>
+          ) : null}
+          {!loaded && !error ? <p role="status">Loading calls.</p> : null}
+          {loaded && visible.length === 0 ? (
             <EmptyState title={EMPTY_CALLS.title} description={EMPTY_CALLS.description} />
-          ) : (
+          ) : null}
+          {visible.length > 0 ? (
             <ul className="record-list">
               {visible.map((call) => (
                 <li key={call.id}>
@@ -98,7 +106,7 @@ export function CallHistory() {
                 </li>
               ))}
             </ul>
-          )}
+          ) : null}
           {current ? <CallDetail call={current} /> : null}
         </>
       )}
@@ -111,13 +119,36 @@ function CallDetail({ call }: { call: DemoCall }) {
     <article className="detail">
       <h2>Call {call.id.slice(0, 8)}</h2>
       {call.isSample ? <p className="badge sample">Sample data. Not a real caller.</p> : null}
-      <p>Started {formatWhen(call.startedAt)}</p>
-      <p>Duration {formatDuration(call.durationSeconds)}</p>
-      <p>Caller {call.callerName || "Not provided"}</p>
-      <p>Phone {call.callerPhone || "Not provided"}</p>
-      <p>Reason {call.callReason || "Not captured"}</p>
-      <p>Outcome {call.outcome.replaceAll("_", " ")}</p>
-      <p>Follow-up {call.followUpStatus}</p>
+      <dl className="facts">
+        <div>
+          <dt>Started</dt>
+          <dd>{formatWhen(call.startedAt)}</dd>
+        </div>
+        <div>
+          <dt>Duration</dt>
+          <dd>{formatDuration(call.durationSeconds)}</dd>
+        </div>
+        <div>
+          <dt>Caller</dt>
+          <dd>{call.callerName || "Not provided"}</dd>
+        </div>
+        <div>
+          <dt>Phone</dt>
+          <dd>{call.callerPhone || "Not provided"}</dd>
+        </div>
+        <div>
+          <dt>Reason</dt>
+          <dd>{call.callReason || "Not captured"}</dd>
+        </div>
+        <div>
+          <dt>Outcome</dt>
+          <dd>{call.outcome.replaceAll("_", " ")}</dd>
+        </div>
+        <div>
+          <dt>Follow-up</dt>
+          <dd>{call.followUpStatus}</dd>
+        </div>
+      </dl>
       <p>{call.summary || "No summary was saved."}</p>
       {call.failureReason ? <p>Failure note: {call.failureReason}</p> : null}
       {call.transcript?.length ? (

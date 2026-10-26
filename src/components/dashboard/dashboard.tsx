@@ -51,19 +51,32 @@ export function Dashboard() {
 
   return (
     <div className="stack">
-      <header>
-        <p className="page-kicker">Interactive demo</p>
-        <h1>AI Clinic Receptionist</h1>
+      <header className="hero">
+        <p className="page-kicker">Kynex Code · AI Calling Assistant</p>
+        <h1>
+          Ask the
+          <br />
+          desk.
+        </h1>
         <p className="lede">
-          Speak with the receptionist for a fictional Indian clinic. The clinic, doctors, and saved records are demonstration
-          data. A connected session is a browser conversation, not a phone call.
+          Sunrise Family Clinic answers in the browser. It can take an appointment request. It cannot confirm a booking.
         </p>
+        <div className="actions">
+          <a className="button primary" href="#call-demo">
+            Start a call
+          </a>
+        </div>
       </header>
 
+      {health === null ? (
+        <p className="meta" role="status">
+          Loading the demo.
+        </p>
+      ) : null}
       {health?.voice === "not_configured" ? (
         <p className="banner">
-          <strong>Voice service not configured. </strong>
-          Add OPENAI_API_KEY on the server. Start Demo will not pretend that a live call is connected.
+          <strong>Voice is not configured. </strong>
+          Add OPENAI_API_KEY on the server. The call control will not pretend a live session is connected.
         </p>
       ) : null}
       {health?.database === "memory" ? (
@@ -73,114 +86,116 @@ export function Dashboard() {
         </p>
       ) : null}
 
-      <section className="metrics" aria-label="Demo activity">
-        <Metric label="Calls completed" value={metrics?.callsCompleted} />
-        <Metric label="Enquiries captured" value={metrics?.enquiriesCaptured} />
-        <Metric label="Appointment requests" value={metrics?.appointmentRequests} />
-        <Metric label="Needs follow-up" value={metrics?.callsNeedingFollowUp} />
-      </section>
+      <CallPanel clinicName={clinicName} onFinished={load} />
 
-      <div className="dashboard">
-        <CallPanel clinicName={clinicName} onFinished={load} />
-        <aside className="stack">
-          <section className="panel">
-            <h2>Recent demo calls</h2>
-            {!admin.admin ? (
-              <p className="meta">Sign in as the demo administrator to review saved calls. Phone numbers are not shown publicly.</p>
-            ) : calls.length === 0 ? (
-              <EmptyState title={EMPTY_CALLS.title} description={EMPTY_CALLS.description} />
-            ) : (
-              <ul className="record-list">
-                {calls.slice(0, 5).map((call) => (
-                  <li key={call.id} className="record">
-                    <div className="record-top">
-                      <strong>{call.callerName || "Unknown caller"}</strong>
-                      {call.isSample ? <span className="badge sample">Sample data</span> : null}
-                    </div>
-                    <p className="meta">
-                      {call.callReason || "No reason captured"} · {formatWhen(call.startedAt)} · {formatDuration(call.durationSeconds)}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
+      {admin.admin ? (
+        <>
+          <section aria-label="Demo activity">
+            <p className="page-kicker">Saved demo activity</p>
+            <div className="figures">
+              <Figure label="Calls completed" value={metrics?.callsCompleted} />
+              <Figure label="Enquiries captured" value={metrics?.enquiriesCaptured} />
+              <Figure label="Appointment requests" value={metrics?.appointmentRequests} />
+              <Figure label="Needs follow-up" value={metrics?.callsNeedingFollowUp} />
+            </div>
           </section>
-          <section className="panel">
-            <h2>Appointment requests</h2>
-            {!admin.admin ? (
-              <p className="meta">Sign in to review requests. The receptionist can create a request, not a confirmed booking.</p>
-            ) : appointments.length === 0 ? (
-              <EmptyState title={EMPTY_APPOINTMENTS.title} description={EMPTY_APPOINTMENTS.description} />
-            ) : (
-              <ul className="record-list">
-                {appointments.slice(0, 5).map((appointment) => (
-                  <li key={appointment.id} className="record">
-                    <div className="record-top">
-                      <strong>{appointment.callerName}</strong>
-                      {appointment.isSample ? <span className="badge sample">Sample data</span> : <span className="badge">{APPOINTMENT_LABEL[appointment.status]}</span>}
-                    </div>
-                    <p className="meta">
-                      {appointment.requestedDoctor || appointment.requestedService} · {appointment.preferredDate} · {appointment.preferredTime}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          {admin.admin ? (
-            <section className="panel">
-              <h2>Reset demo data</h2>
-              <p className="meta">Deletes saved calls, enquiries, and appointment requests. Clinic settings stay in place.</p>
-              <button className="button danger" type="button" onClick={() => setResetOpen(true)}>
-                Reset demo data
-              </button>
-              {resetOpen ? (
-                <form
-                  className="stack"
-                  style={{ marginTop: "0.8rem" }}
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void fetch("/api/admin/reset", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ confirm: "RESET DEMO" }),
-                    }).then(async (response) => {
-                      const body = (await response.json()) as { notice?: string; error?: string };
-                      setMessage(body.notice || body.error || "The reset could not be completed.");
-                      setResetOpen(false);
-                      setConfirmed(false);
-                      await load();
-                    });
-                  }}
-                >
-                  <label className="checks">
-                    <span>
-                      <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-                      I understand this deletes the saved demo records.
-                    </span>
-                  </label>
-                  <div className="actions">
-                    <button className="button danger" type="submit" disabled={!confirmed}>
-                      Delete demo records
-                    </button>
-                    <button className="button secondary" type="button" onClick={() => setResetOpen(false)}>
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              ) : null}
-              {message ? <p role="status">{message}</p> : null}
+
+          <div className="split">
+            <section>
+              <h2>Recent calls</h2>
+              {calls.length === 0 ? (
+                <EmptyState title={EMPTY_CALLS.title} description={EMPTY_CALLS.description} />
+              ) : (
+                <ul className="record-list">
+                  {calls.slice(0, 5).map((call) => (
+                    <li key={call.id} className="record">
+                      <div className="record-top">
+                        <strong>{call.callerName || "Unknown caller"}</strong>
+                        {call.isSample ? <span className="badge sample">Sample data</span> : null}
+                      </div>
+                      <p className="meta">
+                        {call.callReason || "No reason captured"} · {formatWhen(call.startedAt)} · {formatDuration(call.durationSeconds)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
-          ) : null}
-        </aside>
-      </div>
+            <section>
+              <h2>Requests</h2>
+              {appointments.length === 0 ? (
+                <EmptyState title={EMPTY_APPOINTMENTS.title} description={EMPTY_APPOINTMENTS.description} />
+              ) : (
+                <ul className="record-list">
+                  {appointments.slice(0, 5).map((appointment) => (
+                    <li key={appointment.id} className="record">
+                      <div className="record-top">
+                        <strong>{appointment.callerName}</strong>
+                        {appointment.isSample ? <span className="badge sample">Sample data</span> : <span className="badge">{APPOINTMENT_LABEL[appointment.status]}</span>}
+                      </div>
+                      <p className="meta">
+                        {appointment.requestedDoctor || appointment.requestedService} · {appointment.preferredDate} · {appointment.preferredTime}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+
+          <section>
+            <h2>Reset demo data</h2>
+            <p className="meta">Deletes saved calls, enquiries, and appointment requests. Clinic settings stay in place.</p>
+            <button className="button danger" type="button" onClick={() => setResetOpen(true)}>
+              Reset demo data
+            </button>
+            {resetOpen ? (
+              <form
+                className="stack"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void fetch("/api/admin/reset", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ confirm: "RESET DEMO" }),
+                  }).then(async (response) => {
+                    const body = (await response.json()) as { notice?: string; error?: string };
+                    setMessage(body.notice || body.error || "The reset could not be completed.");
+                    setResetOpen(false);
+                    setConfirmed(false);
+                    await load();
+                  });
+                }}
+              >
+                <div className="checks">
+                  <label>
+                    <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+                    <span>I understand this deletes the saved demo records.</span>
+                  </label>
+                </div>
+                <div className="actions">
+                  <button className="button danger" type="submit" disabled={!confirmed}>
+                    Delete demo records
+                  </button>
+                  <button className="button secondary" type="button" onClick={() => setResetOpen(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : null}
+            {message ? <p role="status">{message}</p> : null}
+          </section>
+        </>
+      ) : (
+        <p className="meta">Sign in as admin to review saved calls and requests. Phone numbers stay off this page.</p>
+      )}
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: number | undefined }) {
+function Figure({ label, value }: { label: string; value: number | undefined }) {
   return (
-    <article className="metric">
+    <article className="figure">
       <span>{label}</span>
       <strong>{value ?? "—"}</strong>
     </article>
