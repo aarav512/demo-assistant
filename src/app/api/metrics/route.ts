@@ -1,6 +1,7 @@
 import { getRepository, storageMode } from "@/lib/data/store";
 import { errorResponse } from "@/lib/http";
 import { adminConfigured } from "@/lib/auth/admin";
+import { openAiApiKey } from "@/lib/openai/server-env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export async function GET() {
     return Response.json({
       ...metrics,
       storage: storageMode(),
-      voice: process.env.OPENAI_API_KEY?.trim() ? "configured" : "not_configured",
+      voice: (await openAiApiKey()) ? "configured" : "not_configured",
       admin: adminConfigured() ? "configured" : "not_configured",
     });
   } catch (error) {

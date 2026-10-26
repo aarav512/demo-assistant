@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { getRepository } from "@/lib/data/store";
 import { errorResponse, jsonError, readJson } from "@/lib/http";
 import { createRealtimeAnswer, VoiceSessionError } from "@/lib/openai/realtime-session";
+import { openAiApiKey } from "@/lib/openai/server-env";
 import { buildCallSummary } from "@/lib/summary/build-summary";
 import { clientIp, allowRequest } from "@/lib/utils/rate-limit";
 import { originAllowed } from "@/lib/utils/origin";
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
     if (!parsed.data.sdp.startsWith("v=")) {
       return jsonError(400, "invalid_sdp", "The voice connection could not be prepared.");
     }
-    if (!process.env.OPENAI_API_KEY?.trim()) {
+    if (!(await openAiApiKey())) {
       return jsonError(503, "voice_not_configured", "Voice service not configured.");
     }
 

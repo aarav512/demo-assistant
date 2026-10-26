@@ -15,10 +15,17 @@ describe("realtime session commands", () => {
     const update = sessionUpdateCommand();
     expect(update.type).toBe("session.update");
     const session = update.session as {
+      type: string;
       output_modalities: string[];
-      audio: { input: { turn_detection: { create_response: boolean } } };
+      audio: {
+        input: { transcription: { model: string }; turn_detection: { create_response: boolean } };
+        output: { voice: string };
+      };
     };
+    expect(session.type).toBe("realtime");
     expect(session.output_modalities).toEqual(["audio"]);
+    expect(session.audio.output.voice).toBe("marin");
+    expect(session.audio.input.transcription.model).toBe("gpt-4o-mini-transcribe");
     expect(session.audio.input.turn_detection.create_response).toBe(true);
     expect(greetingCommand().response).toMatchObject({ output_modalities: ["audio"] });
     expect(audioResponseCommand()).toEqual({ type: "response.create", response: { output_modalities: ["audio"] } });

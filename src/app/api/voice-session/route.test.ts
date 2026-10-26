@@ -85,6 +85,38 @@ describe("voice service failures", () => {
     expect(body.error).toBe("The voice service rejected the server credentials.");
     expect(body.error).not.toContain("sk-test-secret");
   });
+
+  it("strips wrapping quotes before the key is sent to the model", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "\"sk-test-secret\"");
+    const fetchMock = vi.fn(async () => new Response("v=0\r\nanswer", { status: 200 }));
+    await createRealtimeAnswer({
+      sdp: "v=0\r\noffer",
+      clinic: DEFAULT_CLINIC,
+      safetyId: "demo",
+      fetchImpl: fetchMock,
+    });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.headers).toMatchObject({ Authorization: "Bearer sk-test-secret" });
+  });
+
+  it("treats an invalid_api_key body as rejected credentials", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-test-secret");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: { code: "invalid_api_key", message: "Incorrect API key provided: sk-test-secret" } }), { status: 401 })),
+    );
+    const response = await startVoice(
+      new Request("http://localhost:3000/api/voice-session", {
+        method: "POST",
+        headers: { origin: "http://localhost:3000", host: "localhost:3000", "content-type": "application/json" },
+        body: JSON.stringify({ sdp: "v=0\r\noffer", consent: true, storeTranscript: false }),
+      }),
+    );
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { code: string; error: string };
+    expect(body.code).toBe("voice_unauthorized");
+    expect(body.error).not.toContain("sk-test-secret");
+  });
 });
 
 describe("appointment administration", () => {

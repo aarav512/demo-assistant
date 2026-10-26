@@ -1,4 +1,5 @@
 import { buildReceptionistInstructions } from "@/lib/clinic/instructions";
+import { openAiApiKey, openAiRealtimeModel } from "@/lib/openai/server-env";
 import { REALTIME_TOOLS, realtimeModel } from "@/lib/openai/tools";
 import type { ClinicSettings } from "@/types/domain";
 
@@ -11,10 +12,10 @@ export class VoiceSessionError extends Error {
   }
 }
 
-export function buildSessionConfig(clinic: ClinicSettings) {
+export function buildSessionConfig(clinic: ClinicSettings, model = realtimeModel()) {
   return {
     type: "realtime",
-    model: realtimeModel(),
+    model,
     output_modalities: ["audio"],
     instructions: buildReceptionistInstructions(clinic),
     tool_choice: "auto",
@@ -40,13 +41,14 @@ export async function createRealtimeAnswer(options: {
   safetyId: string;
   fetchImpl?: typeof fetch;
 }): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const apiKey = await openAiApiKey();
   if (!apiKey) {
     throw new VoiceSessionError("Voice service not configured.", "voice_not_configured");
   }
+  const model = await openAiRealtimeModel(realtimeModel());
   const form = new FormData();
   form.set("sdp", options.sdp);
-  form.set("session", JSON.stringify(buildSessionConfig(options.clinic)));
+  form.set("session", JSON.stringify(buildSessionConfig(options.clinic, model)));
   const fetchImpl = options.fetchImpl ?? fetch;
   const response = await fetchImpl("https://api.openai.com/v1/realtime/calls", {
     method: "POST",
@@ -57,12 +59,22 @@ export async function createRealtimeAnswer(options: {
     body: form,
   });
   const body = await response.text();
-  if (!response.ok || !body.startsWith("v=")) {
-    console.error("Realtime session was rejected", response.status);
-    if (response.status === 401 || response.status === 403) {
+  if (!response.ok || !body.trim().startsWith("v=")) {
+    const errorCode = openAiErrorCode(body);
+    console.error("Realtime session was rejected", response.status, errorCode || "no_error_code");
+    if (response.status === 401 || response.status === 403 || errorCode === "invalid_api_key") {
       throw new VoiceSessionError("The voice service rejected the server credentials.", "voice_unauthorized");
     }
     throw new VoiceSessionError("The voice service could not start a session.", "voice_unavailable");
   }
-  return body;
+  return body.trim();
+}
+
+function openAiErrorCode(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: { code?: string } };
+    return typeof parsed.error?.code === "string" ? parsed.error.code : "";
+  } catch {
+    return "";
+  }
 }

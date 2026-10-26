@@ -9,11 +9,14 @@ export function sessionUpdateCommand(): RealtimeCommand {
   return {
     type: "session.update",
     session: {
+      type: "realtime",
       output_modalities: ["audio"],
       audio: {
         input: {
+          transcription: { model: "gpt-4o-mini-transcribe" },
           turn_detection: { type: "server_vad", create_response: true, interrupt_response: true },
         },
+        output: { voice: "marin" },
       },
     },
   };

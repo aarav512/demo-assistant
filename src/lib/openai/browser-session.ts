@@ -79,9 +79,8 @@ export class BrowserVoiceSession {
       pendingMicrophone = navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
       });
-      const healthResponse = await fetch("/api/health", { cache: "no-store" });
-      const health = (await healthResponse.json()) as { voice?: string };
-      if (health.voice !== "configured") {
+      const voiceState = await readVoiceState();
+      if (voiceState === "not_configured") {
         this.stopStream(await pendingMicrophone.catch(() => null));
         this.fail("Voice service not configured.");
         return;
@@ -135,7 +134,7 @@ export class BrowserVoiceSession {
         body: JSON.stringify({ sdp, consent: true, storeTranscript: options.storeTranscript }),
         signal: AbortSignal.timeout(25_000),
       });
-      const payload = (await response.json()) as { sdp?: string; callId?: string; callToken?: string; error?: string };
+      const payload = await readJsonBody<{ sdp?: string; callId?: string; callToken?: string; error?: string }>(response);
       if (!response.ok || !payload.sdp || !payload.callId || !payload.callToken) {
         throw new Error(payload.error || "The voice service could not start a session.");
       }
@@ -147,8 +146,6 @@ export class BrowserVoiceSession {
       const denied = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError");
       const missingMic = error instanceof DOMException && (error.name === "NotFoundError" || error.name === "NotReadableError");
       const timedOut = error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError");
-      const id = this.callId;
-      const token = this.callToken;
       this.fail(
         denied
           ? "Microphone access was denied. Allow the microphone in your browser, then start the demo again."
@@ -158,14 +155,6 @@ export class BrowserVoiceSession {
               ? "The voice service took too long to answer. Start the demo again."
               : safeClientMessage(error instanceof Error ? error.message : "The voice connection failed."),
       );
-      if (id && token) {
-        void fetch(`/api/calls/${id}`, {
-          method: "POST",
-          keepalive: true,
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ outcome: "failed", failureReason: "The voice connection failed." }),
-        });
-      }
     } finally {
       this.starting = false;
     }
@@ -410,9 +399,19 @@ export class BrowserVoiceSession {
   private fail(message: string): void {
     if (this.closing) return;
     this.closing = true;
+    const id = this.callId;
+    const token = this.callToken;
     this.release();
     this.setStatus("disconnected");
     this.listener({ type: "error", message });
+    if (id && token) {
+      void fetch(`/api/calls/${id}`, {
+        method: "POST",
+        keepalive: true,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ outcome: "failed", failureReason: "The voice connection failed." }),
+      });
+    }
   }
 
   private release(): void {
@@ -438,6 +437,25 @@ export class BrowserVoiceSession {
     this.frame = 0;
     this.callId = null;
     this.callToken = null;
+  }
+}
+
+async function readVoiceState(): Promise<string> {
+  try {
+    const healthResponse = await fetch("/api/health", { cache: "no-store" });
+    if (!healthResponse.ok) return "unknown";
+    const health = await readJsonBody<{ voice?: string }>(healthResponse);
+    return health.voice ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+async function readJsonBody<T>(response: Response): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return {} as T;
   }
 }
 
