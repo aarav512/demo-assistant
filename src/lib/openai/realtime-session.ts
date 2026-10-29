@@ -39,10 +39,15 @@ export function buildSessionConfig(clinic: ClinicSettings, model = realtimeModel
  * The offer must end in a line break. OpenAI's SDP reader treats a missing
  * final CRLF as an empty offer ("failed to unmarshal SDP: EOF").
  */
+/** Chrome rejects an SDP description whose last line has no CRLF. */
+export function ensureSdpLineEnding(sdp: string): string {
+  return `${sdp.replace(/(?:\r\n|\n|\r)+$/, "")}\r\n`;
+}
+
 export function encodeRealtimeCall(sdp: string, session: unknown): { body: string; contentType: string } {
   const boundary = `kynexRealtime${crypto.randomUUID().replaceAll("-", "")}`;
   const sessionJson = JSON.stringify(session);
-  const offer = sdp.endsWith("\n") ? sdp : `${sdp}\r\n`;
+  const offer = ensureSdpLineEnding(sdp);
   const body = [
     `--${boundary}`,
     `Content-Disposition: form-data; name="sdp"`,
@@ -117,7 +122,7 @@ export async function createRealtimeAnswer(options: {
     }
     throw new VoiceSessionError("The voice service could not start a session.", "voice_unavailable");
   }
-  return body.trim();
+  return ensureSdpLineEnding(body);
 }
 
 function openAiErrorCode(body: string): string {

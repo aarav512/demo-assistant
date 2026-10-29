@@ -3,7 +3,7 @@ import { MemoryStore } from "@/lib/data/memory";
 import { setRepositoryForTests } from "@/lib/data/store";
 import { POST as startVoice } from "@/app/api/voice-session/route";
 import { PATCH as updateAppointment } from "@/app/api/appointments/[id]/route";
-import { buildSessionConfig, createRealtimeAnswer, encodeRealtimeCall, safeUpstreamDescription } from "@/lib/openai/realtime-session";
+import { buildSessionConfig, createRealtimeAnswer, encodeRealtimeCall, ensureSdpLineEnding, safeUpstreamDescription } from "@/lib/openai/realtime-session";
 import { DEFAULT_CLINIC } from "@/lib/clinic/default-clinic";
 import { resetRateLimits } from "@/lib/utils/rate-limit";
 import { voiceSessionSchema } from "@/lib/validation/schemas";
@@ -146,6 +146,23 @@ describe("voice service failures", () => {
     expect(response.status).toBe(200);
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(multipartPart(String(init.body), "sdp")).toBe(offer);
+  });
+
+  it("keeps the final CRLF on the SDP answer Chrome will play", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-test-secret");
+    const upstream = "v=0\r\na=ice-pwd:example\r\n";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(upstream, { status: 200 })));
+    const response = await startVoice(
+      new Request("http://localhost:3000/api/voice-session", {
+        method: "POST",
+        headers: { origin: "http://localhost:3000", host: "localhost:3000", "content-type": "application/json" },
+        body: JSON.stringify({ sdp: "v=0\r\noffer\r\n", consent: true, storeTranscript: false }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { sdp: string };
+    expect(payload.sdp).toBe(upstream);
+    expect(ensureSdpLineEnding("v=0\r\na=ice-pwd:example")).toBe(upstream);
   });
 
   it("tells the caller when the voice credentials are rejected", async () => {

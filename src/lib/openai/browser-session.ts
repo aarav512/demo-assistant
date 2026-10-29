@@ -140,7 +140,8 @@ export class BrowserVoiceSession {
       }
       this.callId = payload.callId;
       this.callToken = payload.callToken;
-      await peer.setRemoteDescription({ type: "answer", sdp: payload.sdp });
+      const answer = `${payload.sdp.replace(/(?:\r\n|\n|\r)+$/, "")}\r\n`;
+      await peer.setRemoteDescription({ type: "answer", sdp: answer });
     } catch (error) {
       if (pendingMicrophone) this.stopStream(await pendingMicrophone.catch(() => null));
       const denied = error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError");
