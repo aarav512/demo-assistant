@@ -6,6 +6,7 @@ import { PATCH as updateAppointment } from "@/app/api/appointments/[id]/route";
 import { buildSessionConfig, createRealtimeAnswer, encodeRealtimeCall, safeUpstreamDescription } from "@/lib/openai/realtime-session";
 import { DEFAULT_CLINIC } from "@/lib/clinic/default-clinic";
 import { resetRateLimits } from "@/lib/utils/rate-limit";
+import { voiceSessionSchema } from "@/lib/validation/schemas";
 
 const store = new MemoryStore();
 
@@ -125,8 +126,26 @@ describe("voice service failures", () => {
     expect(safeUpstreamDescription(400, "v=0\r\na=fingerprint:AA:BB")).toBe("HTTP 400 non-json body");
     const encoded = encodeRealtimeCall("v=0\r\noffer", { type: "realtime", model: "gpt-realtime-2.1" });
     expect(encoded.contentType).toMatch(/^multipart\/form-data; boundary=kynexRealtime/);
-    expect(encoded.body).toContain("Content-Type: application/sdp\r\n\r\nv=0\r\noffer");
+    expect(multipartPart(encoded.body, "sdp")).toBe("v=0\r\noffer\r\n");
     expect(encoded.body).toContain('Content-Type: application/json\r\n\r\n{"type":"realtime","model":"gpt-realtime-2.1"}');
+  });
+
+  it("forwards the browser offer with its trailing line ending", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-test-secret");
+    const offer = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\n";
+    expect(voiceSessionSchema.parse({ sdp: offer, consent: true }).sdp).toBe(offer);
+    const fetchMock = vi.fn(async () => new Response("v=0\r\nanswer\r\n", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await startVoice(
+      new Request("http://localhost:3000/api/voice-session", {
+        method: "POST",
+        headers: { origin: "http://localhost:3000", host: "localhost:3000", "content-type": "application/json" },
+        body: JSON.stringify({ sdp: offer, consent: true, storeTranscript: false }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(multipartPart(String(init.body), "sdp")).toBe(offer);
   });
 
   it("tells the caller when the voice credentials are rejected", async () => {

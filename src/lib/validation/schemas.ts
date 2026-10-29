@@ -111,7 +111,9 @@ export const endCallSchema = z.object({
 });
 
 export const voiceSessionSchema = z.object({
-  sdp: z.string().trim().min(8).max(100_000),
+  // Keep the offer byte-for-byte. Trimming the trailing CRLF makes OpenAI
+  // reject it with "failed to unmarshal SDP: EOF".
+  sdp: z.string().min(8).max(100_000),
   consent: z.boolean().refine((value) => value === true, {
     message: "Consent is required before a demo can start.",
   }),

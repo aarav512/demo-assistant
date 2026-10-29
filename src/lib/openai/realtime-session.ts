@@ -36,16 +36,19 @@ export function buildSessionConfig(clinic: ClinicSettings, model = realtimeModel
  * The OpenAPI encoding requires the SDP part to be application/sdp and the
  * session part to be application/json. A plain FormData string omits those
  * types, so the upstream call is rejected before any audio answer is returned.
+ * The offer must end in a line break. OpenAI's SDP reader treats a missing
+ * final CRLF as an empty offer ("failed to unmarshal SDP: EOF").
  */
 export function encodeRealtimeCall(sdp: string, session: unknown): { body: string; contentType: string } {
   const boundary = `kynexRealtime${crypto.randomUUID().replaceAll("-", "")}`;
   const sessionJson = JSON.stringify(session);
+  const offer = sdp.endsWith("\n") ? sdp : `${sdp}\r\n`;
   const body = [
     `--${boundary}`,
     `Content-Disposition: form-data; name="sdp"`,
     "Content-Type: application/sdp",
     "",
-    sdp,
+    offer,
     `--${boundary}`,
     `Content-Disposition: form-data; name="session"`,
     "Content-Type: application/json",
