@@ -3,7 +3,7 @@ import { MemoryStore } from "@/lib/data/memory";
 import { setRepositoryForTests } from "@/lib/data/store";
 import { POST as startVoice } from "@/app/api/voice-session/route";
 import { PATCH as updateAppointment } from "@/app/api/appointments/[id]/route";
-import { buildSessionConfig, createRealtimeAnswer } from "@/lib/openai/realtime-session";
+import { buildSessionConfig, createRealtimeAnswer, encodeRealtimeCall, safeUpstreamDescription } from "@/lib/openai/realtime-session";
 import { DEFAULT_CLINIC } from "@/lib/clinic/default-clinic";
 import { resetRateLimits } from "@/lib/utils/rate-limit";
 
@@ -55,15 +55,78 @@ describe("voice service failures", () => {
       fetchImpl: fetchMock,
     });
     expect(answer.startsWith("v=")).toBe(true);
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(init.headers).toMatchObject({ Authorization: "Bearer sk-test-secret" });
-    const session = JSON.parse(String((init.body as FormData).get("session")));
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.openai.com/v1/realtime/calls");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({
+      Authorization: "Bearer sk-test-secret",
+      Accept: "application/sdp",
+    });
+    expect(String((init.headers as Record<string, string>)["Content-Type"])).toContain("multipart/form-data; boundary=");
+    const body = String(init.body);
+    expect(body).toContain("Content-Type: application/sdp");
+    expect(body).toContain("Content-Type: application/json");
+    expect(body).toContain("v=0\r\noffer");
+    const session = JSON.parse(multipartPart(body, "session"));
     expect(session.model).toBe("gpt-realtime-2.1");
     expect(session.output_modalities).toEqual(["audio"]);
     expect(session.audio.input.turn_detection.create_response).toBe(true);
     expect(session.tools.map((tool: { name: string }) => tool.name)).toContain("create_appointment_request");
-    expect(JSON.stringify(session)).not.toContain("sk-test-secret");
+    expect(body).not.toContain("sk-test-secret");
     expect(buildSessionConfig(DEFAULT_CLINIC).audio.output.voice).toBe("marin");
+  });
+
+  it("returns a sanitized voice_unavailable error when the upstream call is rejected", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-test-secret");
+    const logged: unknown[][] = [];
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      logged.push(args);
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                code: "invalid_request_error",
+                message: "Session was not parsed. Key sk-test-secret. v=0\r\na=ice-ufrag:not-for-logs",
+              },
+            }),
+            { status: 400 },
+          ),
+      ),
+    );
+    const response = await startVoice(
+      new Request("http://localhost:3000/api/voice-session", {
+        method: "POST",
+        headers: { origin: "http://localhost:3000", host: "localhost:3000", "content-type": "application/json" },
+        body: JSON.stringify({ sdp: "v=0\r\noffer", consent: true, storeTranscript: false }),
+      }),
+    );
+    expect(response.status).toBe(502);
+    const body = (await response.json()) as { error: string; code: string };
+    expect(body.code).toBe("voice_unavailable");
+    expect(body.error).toBe("The voice service could not start a session.");
+    expect(body.error).not.toContain("sk-test-secret");
+    const diagnostic = logged.flat().join(" ");
+    expect(diagnostic).toContain("HTTP 400");
+    expect(diagnostic).toContain("invalid_request_error");
+    expect(diagnostic).not.toContain("sk-test-secret");
+    expect(diagnostic).not.toContain("a=ice-ufrag");
+  });
+
+  it("describes an upstream failure without copying SDP or keys", () => {
+    const description = safeUpstreamDescription(
+      400,
+      JSON.stringify({ error: { code: "missing_model", message: "model missing sk-live-secret" } }),
+    );
+    expect(description).toBe("HTTP 400 missing_model: model missing [redacted]");
+    expect(safeUpstreamDescription(400, "v=0\r\na=fingerprint:AA:BB")).toBe("HTTP 400 non-json body");
+    const encoded = encodeRealtimeCall("v=0\r\noffer", { type: "realtime", model: "gpt-realtime-2.1" });
+    expect(encoded.contentType).toMatch(/^multipart\/form-data; boundary=kynexRealtime/);
+    expect(encoded.body).toContain("Content-Type: application/sdp\r\n\r\nv=0\r\noffer");
+    expect(encoded.body).toContain('Content-Type: application/json\r\n\r\n{"type":"realtime","model":"gpt-realtime-2.1"}');
   });
 
   it("tells the caller when the voice credentials are rejected", async () => {
@@ -118,6 +181,15 @@ describe("voice service failures", () => {
     expect(body.error).not.toContain("sk-test-secret");
   });
 });
+
+function multipartPart(body: string, name: string): string {
+  const marker = `name="${name}"\r\nContent-Type: `;
+  const start = body.indexOf(marker);
+  if (start < 0) throw new Error(`Missing multipart part ${name}`);
+  const valueStart = body.indexOf("\r\n\r\n", start);
+  const valueEnd = body.indexOf("\r\n--", valueStart + 4);
+  return body.slice(valueStart + 4, valueEnd);
+}
 
 describe("appointment administration", () => {
   it("refuses to confirm an appointment without an admin session", async () => {

@@ -32,6 +32,53 @@ export function buildSessionConfig(clinic: ClinicSettings, model = realtimeModel
 }
 
 /**
+ * Multipart body for POST /v1/realtime/calls.
+ * The OpenAPI encoding requires the SDP part to be application/sdp and the
+ * session part to be application/json. A plain FormData string omits those
+ * types, so the upstream call is rejected before any audio answer is returned.
+ */
+export function encodeRealtimeCall(sdp: string, session: unknown): { body: string; contentType: string } {
+  const boundary = `kynexRealtime${crypto.randomUUID().replaceAll("-", "")}`;
+  const sessionJson = JSON.stringify(session);
+  const body = [
+    `--${boundary}`,
+    `Content-Disposition: form-data; name="sdp"`,
+    "Content-Type: application/sdp",
+    "",
+    sdp,
+    `--${boundary}`,
+    `Content-Disposition: form-data; name="session"`,
+    "Content-Type: application/json",
+    "",
+    sessionJson,
+    `--${boundary}--`,
+    "",
+  ].join("\r\n");
+  return { body, contentType: `multipart/form-data; boundary=${boundary}` };
+}
+
+/** Upstream status plus a short description. Never returns keys or SDP. */
+export function safeUpstreamDescription(status: number, body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return `HTTP ${status} empty body`;
+  if (trimmed.startsWith("v=") || trimmed.includes("\na=") || trimmed.includes("\r\na=")) {
+    return `HTTP ${status} non-json body`;
+  }
+  let description = "";
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: { code?: unknown; type?: unknown; message?: unknown } };
+    const parts = [parsed.error?.code, parsed.error?.type, parsed.error?.message].filter(
+      (part): part is string => typeof part === "string" && part.trim().length > 0,
+    );
+    description = parts.join(": ");
+  } catch {
+    description = trimmed.replace(/\s+/g, " ");
+  }
+  description = redactSecrets(description).replace(/\s+/g, " ").trim().slice(0, 240);
+  return `HTTP ${status} ${description || "unreadable body"}`;
+}
+
+/**
  * Exchange a browser SDP offer for a Realtime API answer.
  * The permanent API key is sent only on this server-side request.
  */
@@ -46,22 +93,22 @@ export async function createRealtimeAnswer(options: {
     throw new VoiceSessionError("Voice service not configured.", "voice_not_configured");
   }
   const model = await openAiRealtimeModel(realtimeModel());
-  const form = new FormData();
-  form.set("sdp", options.sdp);
-  form.set("session", JSON.stringify(buildSessionConfig(options.clinic, model)));
+  const encoded = encodeRealtimeCall(options.sdp, buildSessionConfig(options.clinic, model));
   const fetchImpl = options.fetchImpl ?? fetch;
   const response = await fetchImpl("https://api.openai.com/v1/realtime/calls", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
+      Accept: "application/sdp",
+      "Content-Type": encoded.contentType,
       "OpenAI-Safety-Identifier": options.safetyId,
     },
-    body: form,
+    body: encoded.body,
   });
   const body = await response.text();
   if (!response.ok || !body.trim().startsWith("v=")) {
     const errorCode = openAiErrorCode(body);
-    console.error("Realtime session was rejected", response.status, errorCode || "no_error_code");
+    console.error("Realtime session was rejected", safeUpstreamDescription(response.status, body));
     if (response.status === 401 || response.status === 403 || errorCode === "invalid_api_key") {
       throw new VoiceSessionError("The voice service rejected the server credentials.", "voice_unauthorized");
     }
@@ -77,4 +124,11 @@ function openAiErrorCode(body: string): string {
   } catch {
     return "";
   }
+}
+
+function redactSecrets(value: string): string {
+  return value
+    .replace(/sk-[A-Za-z0-9_-]{4,}/g, "[redacted]")
+    .replace(/bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/v=0[\s\S]*/g, "[sdp]");
 }
