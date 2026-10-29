@@ -9,7 +9,7 @@ afterEach(() => {
 
 describe("demo admin access", () => {
   it("rejects a missing or wrong password", () => {
-    process.env.DEMO_ADMIN_PASSWORD = "correct-horse";
+    process.env.DEMO_ADMIN_PASSWORD = "AI-ASSISTANT";
     process.env.SESSION_SECRET = "session-secret-value";
     expect(passwordsMatch("wrong", "correct-horse")).toBe(false);
     const request = new Request("http://localhost/api/calls");
